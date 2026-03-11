@@ -63,6 +63,14 @@ Before you begin, ensure you have the following installed:
     ]
     ```
     </Accordion>
+    
+    <Warning>
+    The code uses `python-dotenv` for environment variable loading (see `src/database.py`), but it's not listed in `pyproject.toml`. Install it separately:
+    
+    ```bash
+    pip install python-dotenv
+    ```
+    </Warning>
   </Step>
 
   <Step title="Configure Environment Variables">

@@ -44,6 +44,13 @@ Before you begin, ensure you have the following installed:
     - **Alembic** - Database migration tool
     - **psycopg** - PostgreSQL adapter
     </Info>
+    
+    <Warning>
+    The code uses `python-dotenv` for loading environment variables, but it's not included in `pyproject.toml`. You'll need to install it separately:
+    ```bash
+    pip install python-dotenv
+    ```
+    </Warning>
   </Step>
 
   <Step title="Configure environment variables">

@@ -7,7 +7,7 @@ description: 'Introduction to the Resemblyzer App Voice Authentication API'
 
 The API is served locally during development:
 
-```
+```text
 http://localhost:8000
 ```
 
@@ -40,6 +40,21 @@ The voice authentication endpoints accept audio files in the following formats:
 ## Response Format
 
 All API responses are returned in JSON format. Successful responses include relevant data, while error responses follow FastAPI's standard error structure.
+
+## Health Check
+
+A simple health check endpoint is available at the root:
+
+```bash
+GET /
+```
+
+Returns:
+```json
+{
+  "message": "Hello World"
+}
+```
 
 ## Available Endpoints
 
