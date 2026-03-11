@@ -1,0 +1,55 @@
+{
+  "projectType": "api-service",
+  "projectName": "Resemblyzer App",
+  "projectDescription": "Voice authentication API service using Resemblyzer for voice embedding-based user registration and login",
+  "theme": "aspen",
+  "primaryColor": "#6366f1",
+  "lightColor": "#818cf8",
+  "darkColor": "#4f46e5",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": ["introduction", "quickstart"]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": ["concepts/voice-authentication", "concepts/embeddings"]
+          },
+          {
+            "group": "Guides",
+            "pages": ["guides/setup", "guides/database", "guides/deployment"]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": ["api/overview", "api/authentication"]
+          },
+          {
+            "group": "Endpoints",
+            "pages": ["api/users/register", "api/users/login", "api/users/list"]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Voice-based user registration with audio file upload",
+    "Voice authentication using cosine similarity matching",
+    "Voice embedding generation using Resemblyzer",
+    "PostgreSQL storage for user data and embeddings",
+    "RESTful API with FastAPI framework"
+  ],
+  "publicApiSurface": [
+    "POST /users/register - Register new user with voice sample",
+    "POST /users/login - Authenticate user by voice",
+    "GET /users/users - List all registered users"
+  ]
+}
