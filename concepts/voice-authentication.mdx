@@ -1,0 +1,251 @@
+---
+title: 'Voice Authentication'
+description: 'Learn how voice biometric authentication works in the Resemblyzer App'
+---
+
+## Overview
+
+Voice authentication in the Resemblyzer App uses biometric voiceprints to verify user identity. Instead of passwords, users authenticate by speaking, and their unique vocal characteristics are analyzed to confirm their identity.
+
+## Authentication Flow
+
+The voice authentication process consists of two main phases:
+
+<Steps>
+  <Step title="Registration (Enrollment)">
+    Users register by providing their name and a voice sample. The system generates a voice embedding from the audio and stores it securely in the database.
+  </Step>
+  
+  <Step title="Login (Verification)">
+    Users authenticate by submitting their name and a new voice sample. The system compares the new voice embedding against the stored embedding to verify identity.
+  </Step>
+</Steps>
+
+## Registration Process
+
+During registration, the system processes the user's voice sample and creates a unique voiceprint:
+
+```python
+@router.post("/register")
+async def create_users(
+    name: str = Form(...),
+    audio: UploadFile = File(...),
+    db: Session = Depends(database.get_db),
+):
+    # Validate audio format
+    if audio.content_type not in ["audio/mpeg", "audio/wav", "audio/mp3"]:
+        raise HTTPException(status_code=400, detail="Formato de audio invalido")
+
+    # Save uploaded file temporarily
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+        shutil.copyfileobj(audio.file, tmp)
+        tmp_path = Path(tmp.name)
+
+    try:
+        # Preprocess audio and generate embedding
+        wav_audio = preprocess_wav(tmp_path)
+        embed = encoder.embed_utterance(wav_audio)
+
+        # Store user with voice embedding as binary
+        user = models.User(name=name, voice_emmbedding=embed.tobytes())
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    finally:
+        if tmp_path.exists(): tmp_path.unlink()
+
+    return {"message": "User created successfully", "user_id": user.id}
+```
+
+<Note>
+  The voice embedding is stored as binary data (`LargeBinary` in PostgreSQL) for efficient storage. Each embedding is a 256-dimensional float32 vector, requiring approximately 1KB of storage per user.
+</Note>
+
+## Login Process
+
+During login, the system verifies identity by comparing voice embeddings:
+
+```python
+@router.post("/login")
+async def login_user(
+    name: str = Form(...),
+    audio: UploadFile = File(...),
+    db: Session = Depends(database.get_db),
+):
+    # Retrieve stored user
+    user = db.query(models.User).filter(models.User.name == name).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    
+    # Process login audio
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+        shutil.copyfileobj(audio.file, tmp)
+        tmp_path = Path(tmp.name)
+
+    try:
+        wav_audio = preprocess_wav(tmp_path)
+        login_embed = encoder.embed_utterance(wav_audio)
+    finally:
+        if tmp_path.exists(): tmp_path.unlink()
+
+    # Compare embeddings using cosine similarity
+    master_embed = np.frombuffer(user.voice_emmbedding, dtype=np.float32)
+    similarity = np.inner(master_embed, login_embed)
+
+    UMBRAL = 0.80
+    if similarity < UMBRAL:
+        raise HTTPException(
+            status_code=401, 
+            detail=f"Acceso denegado. Similitud: {similarity:.4f}"
+        )
+    
+    return {
+        "status": "success",
+        "message": f"Bienvenido {user.name}",
+        "similarity": float(similarity)
+    }
+```
+
+## Similarity Calculation
+
+The system uses **cosine similarity** to compare voice embeddings. Since Resemblyzer embeddings are already normalized (unit vectors), cosine similarity can be efficiently computed using the inner product:
+
+```python
+master_embed = np.frombuffer(user.voice_emmbedding, dtype=np.float32)
+similarity = np.inner(master_embed, login_embed)
+```
+
+### How It Works
+
+- **Inner Product**: For normalized vectors, `np.inner(a, b)` equals `cos(θ)` where θ is the angle between vectors
+- **Range**: Similarity scores range from -1 to 1, where:
+  - `1.0` = Perfect match (identical voice)
+  - `0.0` = Orthogonal (completely different)
+  - `-1.0` = Opposite (extremely rare in practice)
+- **Interpretation**: Higher scores indicate greater voice similarity
+
+<Info>
+  The inner product operation is computationally efficient (O(n) where n=256) and provides real-time authentication performance.
+</Info>
+
+## Authentication Threshold
+
+The system uses a similarity threshold of **0.80** to determine authentication success:
+
+```python
+UMBRAL = 0.80
+if similarity < UMBRAL:
+    raise HTTPException(status_code=401, detail=f"Acceso denegado")
+```
+
+### Threshold Selection Trade-offs
+
+<AccordionGroup>
+  <Accordion title="Higher Threshold (e.g., 0.90+)">
+    **Advantages:**
+    - Stronger security
+    - Lower false acceptance rate (FAR)
+    - Harder for attackers to impersonate
+
+    **Disadvantages:**
+    - Higher false rejection rate (FRR)
+    - Users may be rejected due to voice variations (illness, background noise, microphone quality)
+    - Poor user experience if legitimate users are frequently rejected
+  </Accordion>
+
+  <Accordion title="Lower Threshold (e.g., 0.70)">
+    **Advantages:**
+    - Better user experience
+    - Lower false rejection rate
+    - More tolerant of natural voice variations
+
+    **Disadvantages:**
+    - Reduced security
+    - Higher false acceptance rate
+    - Increased risk of impersonation
+  </Accordion>
+
+  <Accordion title="Current Setting (0.80) - Balanced">
+    The 0.80 threshold provides a balanced approach:
+    - Reasonable security for most applications
+    - Acceptable user experience
+    - Good tolerance for natural voice variations
+    - Suitable for applications where voice authentication is combined with other factors (e.g., username)
+  </Accordion>
+</AccordionGroup>
+
+<Tip>
+  For production deployments, consider making the threshold configurable and A/B testing different values to find the optimal balance for your specific use case and user base.
+</Tip>
+
+## Security Considerations
+
+### Strengths
+
+- **Biometric Security**: Voice characteristics are unique and difficult to replicate
+- **No Password Storage**: Eliminates password-related vulnerabilities (weak passwords, reuse, leaks)
+- **Binary Storage**: Embeddings are stored efficiently as binary data, not raw audio
+- **One-way Process**: Voice embeddings cannot be reversed to reconstruct the original audio
+
+### Vulnerabilities and Mitigations
+
+<Warning>
+  **Replay Attacks**: An attacker could record and replay a user's voice sample. Consider implementing:
+  - Challenge-response systems (ask users to speak random phrases)
+  - Liveness detection to ensure audio is from a live person
+  - Time-based tokens that expire
+</Warning>
+
+<Warning>
+  **Voice Synthesis**: Advanced AI voice cloning could potentially generate convincing voice samples. Mitigations:
+  - Combine voice authentication with other factors (2FA)
+  - Implement anomaly detection for synthesis artifacts
+  - Regular re-enrollment to capture natural voice changes
+</Warning>
+
+### Best Practices
+
+1. **Multi-Factor Authentication**: Use voice as one factor among multiple authentication methods
+2. **Rate Limiting**: Implement rate limits on login attempts to prevent brute-force attacks
+3. **Audit Logging**: Log all authentication attempts with similarity scores for security monitoring
+4. **Regular Re-enrollment**: Encourage users to update voice samples periodically as voices naturally change
+5. **Audio Quality Validation**: Reject low-quality audio that could indicate replay attacks or spoofing attempts
+
+<Note>
+  The current implementation uses username + voice, which is more secure than voice alone but less secure than voice + password or voice + OTP.
+</Note>
+
+## Error Handling
+
+The system provides clear feedback for authentication failures:
+
+```python
+# User not found
+if not user:
+    raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+# Authentication failed
+if similarity < UMBRAL:
+    raise HTTPException(
+        status_code=401, 
+        detail=f"Acceso denegado. Similitud: {similarity:.4f}"
+    )
+```
+
+<Warning>
+  In production, avoid revealing exact similarity scores to users on failed authentication attempts. This information could help attackers refine voice spoofing attempts. Consider generic error messages like "Authentication failed" instead.
+</Warning>
+
+## Performance Characteristics
+
+- **Registration Time**: 1-3 seconds (depends on audio length and preprocessing)
+- **Login Time**: 1-3 seconds (similar to registration)
+- **Embedding Generation**: Primary bottleneck, depends on audio length
+- **Similarity Calculation**: Near-instantaneous (&lt;1ms for 256-dimensional vectors)
+- **Database Storage**: ~1KB per user for embedding storage
+
+## Next Steps
+
+- Learn about [Voice Embeddings](/concepts/embeddings) to understand how voiceprints are generated
+- Explore the [Users API](/api/users/register) for implementation details
+- Review [Authentication Endpoints](/api/users/login) for API usage

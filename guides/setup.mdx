@@ -1,0 +1,265 @@
+---
+title: "Development Setup"
+description: "Set up your local development environment for the Resemblyzer App voice authentication API"
+---
+
+## Prerequisites
+
+Before you begin, ensure you have the following installed:
+
+- **Python 3.12 or higher** (required by the project)
+- **PostgreSQL** database server
+- **Git** for version control
+
+## Installation Steps
+
+<Steps>
+  <Step title="Clone the Repository">
+    Clone the project to your local machine:
+    
+    ```bash
+    git clone <repository-url>
+    cd resemblyzer-app
+    ```
+  </Step>
+
+  <Step title="Create Virtual Environment">
+    Create and activate a Python virtual environment:
+    
+    <CodeGroup>
+    ```bash Linux/macOS
+    python3 -m venv .venv
+    source .venv/bin/activate
+    ```
+    
+    ```bash Windows
+    python -m venv .venv
+    .venv\Scripts\activate
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Install Dependencies">
+    Install all required dependencies from `pyproject.toml`:
+    
+    ```bash
+    pip install -e .
+    ```
+    
+    <Accordion title="View Project Dependencies">
+    The project requires the following packages (from `pyproject.toml`):
+    
+    ```toml
+    [project]
+    name = "resemblyzer-app"
+    version = "0.1.0"
+    requires-python = ">=3.12"
+    dependencies = [
+        "alembic>=1.18.4",
+        "fastapi[standard]>=0.135.1",
+        "psycopg>=3.3.3",
+        "resemblyzer>=0.1.4",
+        "sqlalchemy>=2.0.48",
+    ]
+    ```
+    </Accordion>
+  </Step>
+
+  <Step title="Configure Environment Variables">
+    Create a `.env` file in the project root:
+    
+    ```bash
+    touch .env
+    ```
+    
+    Add your database connection string:
+    
+    ```env .env
+    DATABASE_URL=postgresql://user:password@localhost:5432/resemblyzer_db
+    ```
+    
+    <Warning>
+    The `.env` file is listed in `.gitignore` and should never be committed to version control. It contains sensitive credentials.
+    </Warning>
+  </Step>
+
+  <Step title="Set Up the Database">
+    Run database migrations to create the required tables:
+    
+    ```bash
+    alembic upgrade head
+    ```
+    
+    See the [Database Configuration](/guides/database) guide for more details.
+  </Step>
+
+  <Step title="Start the Development Server">
+    Run the FastAPI application with uvicorn:
+    
+    ```bash
+    uvicorn src.main:app --reload
+    ```
+    
+    The API will be available at `http://localhost:8000`
+  </Step>
+</Steps>
+
+## Project Structure
+
+Understanding the project layout:
+
+```
+resemblyzer-app/
+├── src/
+│   ├── __init__.py
+│   ├── main.py              # FastAPI application entry point
+│   ├── database.py          # Database connection and session management
+│   ├── models.py            # SQLAlchemy ORM models
+│   ├── routers/
+│   │   └── users.py         # User registration and authentication endpoints
+│   └── schemas/
+│       └── user.py          # Pydantic schemas for request/response validation
+├── migrations/
+│   ├── env.py               # Alembic environment configuration
+│   └── versions/            # Database migration files
+├── alembic.ini              # Alembic configuration
+├── pyproject.toml           # Project dependencies and metadata
+└── .env                     # Environment variables (not in git)
+```
+
+### Key Files
+
+<Accordion title="src/main.py - Application Entry Point">
+The main application file configures FastAPI, CORS middleware, and registers routers:
+
+```python src/main.py
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from .routers import users
+
+app = FastAPI()
+
+origins = [
+    "http://localhost",
+    "http://localhost:8080",
+    "http://localhost:3000",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(users.router)
+```
+</Accordion>
+
+<Accordion title="src/database.py - Database Configuration">
+Configures SQLAlchemy engine and session management:
+
+```python src/database.py
+import os
+from sqlalchemy import create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+from dotenv import load_dotenv
+
+load_dotenv()
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+```
+</Accordion>
+
+## Verify Installation
+
+Test that everything is working:
+
+<Steps>
+  <Step title="Check API Documentation">
+    Open your browser and visit:
+    - Interactive API docs: `http://localhost:8000/docs`
+    - Alternative docs: `http://localhost:8000/redoc`
+  </Step>
+
+  <Step title="Test Root Endpoint">
+    ```bash
+    curl http://localhost:8000/
+    ```
+    
+    Expected response:
+    ```json
+    {"message": "Hello World"}
+    ```
+  </Step>
+
+  <Step title="Verify Database Connection">
+    Check that migrations ran successfully:
+    
+    ```bash
+    alembic current
+    ```
+    
+    Should show the current migration revision.
+  </Step>
+</Steps>
+
+## Development Tools
+
+<Tip>
+For a better development experience, consider installing:
+- **HTTPie** or **Postman** for API testing
+- **pgAdmin** or **DBeaver** for database management
+- **Python debugger** extensions for your IDE
+</Tip>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Database Configuration" icon="database" href="/guides/database">
+    Learn about database setup, migrations, and schema management
+  </Card>
+  <Card title="API Endpoints" icon="code" href="/api/users/register">
+    Explore the available API endpoints for user registration and authentication
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="ImportError: No module named 'resemblyzer'">
+    Make sure you've activated your virtual environment and installed dependencies:
+    ```bash
+    source .venv/bin/activate  # or .venv\Scripts\activate on Windows
+    pip install -e .
+    ```
+  </Accordion>
+
+  <Accordion title="Database connection errors">
+    Verify that:
+    1. PostgreSQL is running
+    2. Your `DATABASE_URL` in `.env` is correct
+    3. The database exists (create it if needed: `createdb resemblyzer_db`)
+    4. Credentials are valid
+  </Accordion>
+
+  <Accordion title="Port 8000 already in use">
+    Run uvicorn on a different port:
+    ```bash
+    uvicorn src.main:app --reload --port 8001
+    ```
+  </Accordion>
+</AccordionGroup>

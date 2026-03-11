@@ -1,0 +1,99 @@
+---
+title: 'API Overview'
+description: 'Introduction to the Resemblyzer App Voice Authentication API'
+---
+
+## Base URL
+
+The API is served locally during development:
+
+```
+http://localhost:8000
+```
+
+<Note>
+  The API does not currently implement versioning. All endpoints are available at the root level.
+</Note>
+
+## CORS Configuration
+
+The API has CORS enabled for the following origins:
+
+- `http://localhost`
+- `http://localhost:8080`
+- `http://localhost:3000`
+
+All HTTP methods and headers are allowed for these origins with credentials support enabled.
+
+## Supported Audio Formats
+
+The voice authentication endpoints accept audio files in the following formats:
+
+- `audio/mpeg`
+- `audio/wav`
+- `audio/mp3`
+
+<Warning>
+  Uploading audio files with unsupported formats will result in a 400 Bad Request error with the message "Formato de audio invalido".
+</Warning>
+
+## Response Format
+
+All API responses are returned in JSON format. Successful responses include relevant data, while error responses follow FastAPI's standard error structure.
+
+## Available Endpoints
+
+The Resemblyzer App API provides three main endpoints for voice-based user management:
+
+<CardGroup cols={2}>
+  <Card
+    title="Register User"
+    icon="user-plus"
+    href="/api/users/register"
+  >
+    Create a new user identity with voice biometric enrollment
+  </Card>
+  
+  <Card
+    title="Login User"
+    icon="right-to-bracket"
+    href="/api/users/login"
+  >
+    Authenticate a user by comparing voice samples
+  </Card>
+  
+  <Card
+    title="List Users"
+    icon="users"
+    href="/api/users/list"
+  >
+    Retrieve all registered users
+  </Card>
+  
+  <Card
+    title="Authentication"
+    icon="shield-halved"
+    href="/api/authentication"
+  >
+    Learn about the voice-based authentication model
+  </Card>
+</CardGroup>
+
+## Technology Stack
+
+The API is built with:
+
+- **FastAPI**: Modern Python web framework
+- **Resemblyzer**: Voice encoder for generating speaker embeddings
+- **SQLAlchemy**: ORM for database operations
+- **NumPy**: Numerical computations for similarity calculations
+
+## Quick Start
+
+1. **Register a User**: Send a POST request to `/users/register` with a name and audio sample
+2. **Login**: Send a POST request to `/users/login` with the same name and a new audio sample
+3. **List Users**: Send a GET request to `/users/users` to see all registered users
+
+<Info>
+  The API uses voice biometrics as the sole authentication mechanism. No API keys, tokens, or traditional passwords are required.
+</Info>

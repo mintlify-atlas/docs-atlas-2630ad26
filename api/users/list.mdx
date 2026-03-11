@@ -1,0 +1,91 @@
+---
+title: "List Users"
+api: "GET /users/users"
+description: "Retrieve a list of all registered users"
+---
+
+## Description
+
+This endpoint returns a list of all registered users in the system. Each user object contains their unique identifier and name.
+
+## Request Parameters
+
+This endpoint does not require any parameters.
+
+## Request Example
+
+<CodeGroup>
+```bash cURL
+curl -X GET "http://localhost:8000/users/users"
+```
+
+```python Python
+import requests
+
+url = "http://localhost:8000/users/users"
+
+response = requests.get(url)
+print(response.json())
+```
+
+```javascript JavaScript
+fetch('http://localhost:8000/users/users')
+  .then(response => response.json())
+  .then(data => console.log(data));
+```
+</CodeGroup>
+
+## Response
+
+Returns an array of user objects.
+
+<ResponseField name="id" type="integer">
+  The unique identifier of the user.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  The name of the user.
+</ResponseField>
+
+<Note>
+  The response follows the `UserResponse` schema which only includes the user's ID and name. Voice embeddings are not returned for security reasons.
+</Note>
+
+## Response Examples
+
+<Expandable title="Success Response (200)">
+```json
+[
+  {
+    "id": 1,
+    "name": "John Doe"
+  },
+  {
+    "id": 2,
+    "name": "Jane Smith"
+  },
+  {
+    "id": 3,
+    "name": "Bob Johnson"
+  }
+]
+```
+</Expandable>
+
+<Expandable title="Empty List (200)">
+If no users are registered, the endpoint returns an empty array:
+
+```json
+[]
+```
+</Expandable>
+
+## Error Codes
+
+| Status Code | Description |
+|-------------|-------------|
+| 200 | Successfully retrieved user list |
+
+<Warning>
+  This endpoint returns all users without pagination. For production systems with many users, consider implementing pagination to improve performance.
+</Warning>

@@ -1,0 +1,136 @@
+---
+title: "Register User"
+api: "POST /users/register"
+description: "Register a new user with voice authentication by uploading an audio sample"
+---
+
+## Description
+
+This endpoint creates a new user account with voice biometric authentication. It processes an audio file to generate a voice embedding that will be used for future authentication.
+
+## Request Parameters
+
+<ParamField body="name" type="string" required>
+  The name of the user to register. This will be used as the unique identifier for login.
+</ParamField>
+
+<ParamField body="audio" type="file" required>
+  Audio file containing the user's voice sample. Used to generate the voice embedding for authentication.
+  
+  **Accepted formats:**
+  - `audio/mpeg`
+  - `audio/wav`
+  - `audio/mp3`
+</ParamField>
+
+<Note>
+  The audio file should contain clear voice samples for optimal voice embedding generation. The system uses the Resemblyzer library to process the audio and create a unique voice fingerprint.
+</Note>
+
+## Request Example
+
+<CodeGroup>
+```bash cURL
+curl -X POST "http://localhost:8000/users/register" \
+  -H "Content-Type: multipart/form-data" \
+  -F "name=John Doe" \
+  -F "audio=@/path/to/voice_sample.wav"
+```
+
+```python Python
+import requests
+
+url = "http://localhost:8000/users/register"
+
+files = {
+    "audio": open("voice_sample.wav", "rb")
+}
+data = {
+    "name": "John Doe"
+}
+
+response = requests.post(url, files=files, data=data)
+print(response.json())
+```
+
+```javascript JavaScript
+const formData = new FormData();
+formData.append('name', 'John Doe');
+formData.append('audio', audioFile);
+
+fetch('http://localhost:8000/users/register', {
+  method: 'POST',
+  body: formData
+})
+  .then(response => response.json())
+  .then(data => console.log(data));
+```
+</CodeGroup>
+
+## Response
+
+<ResponseField name="message" type="string">
+  Success message confirming user creation.
+  
+  **Value:** `"User created successfully"`
+</ResponseField>
+
+<ResponseField name="user_id" type="integer">
+  The unique identifier assigned to the newly created user.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  The name of the registered user.
+</ResponseField>
+
+<ResponseField name="audio" type="string">
+  The filename of the uploaded audio file.
+</ResponseField>
+
+<ResponseField name="audio_type" type="string">
+  The MIME type of the uploaded audio file (e.g., `audio/wav`, `audio/mpeg`).
+</ResponseField>
+
+<ResponseField name="embed" type="array">
+  Array of floating-point numbers representing the voice embedding vector generated from the audio sample.
+</ResponseField>
+
+## Response Examples
+
+<Expandable title="Success Response (200)">
+```json
+{
+  "message": "User created successfully",
+  "user_id": 1,
+  "name": "John Doe",
+  "audio": "voice_sample.wav",
+  "audio_type": "audio/wav",
+  "embed": [
+    0.123456,
+    -0.234567,
+    0.345678,
+    ...
+  ]
+}
+```
+</Expandable>
+
+<Expandable title="Invalid Audio Format (400)">
+```json
+{
+  "detail": "Formato de audio invalido"
+}
+```
+</Expandable>
+
+## Error Codes
+
+| Status Code | Description |
+|-------------|-------------|
+| 200 | User successfully registered |
+| 400 | Invalid audio format - audio file must be audio/mpeg, audio/wav, or audio/mp3 |
+| 422 | Validation error - missing required fields |
+
+<Warning>
+  Audio files must be in one of the supported formats (audio/mpeg, audio/wav, audio/mp3). Other formats will be rejected with a 400 error.
+</Warning>

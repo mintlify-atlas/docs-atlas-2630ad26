@@ -1,0 +1,117 @@
+---
+title: "Introduction"
+description: "Voice authentication API service using Resemblyzer for voice embedding-based user registration and login"
+---
+
+## Welcome to Resemblyzer App
+
+Resemblyzer App is a voice authentication API service that leverages voice embeddings to provide secure, biometric-based user authentication. Built with FastAPI and powered by the Resemblyzer library, it enables registration and login through voice samples rather than traditional passwords.
+
+<CardGroup cols={2}>
+  <Card
+    title="Quickstart"
+    icon="rocket"
+    href="/quickstart"
+  >
+    Get up and running in minutes with our step-by-step guide
+  </Card>
+  <Card
+    title="API Reference"
+    icon="code"
+    href="/api/overview"
+  >
+    Explore the complete API documentation
+  </Card>
+  <Card
+    title="Voice Authentication"
+    icon="microphone"
+    href="/concepts/voice-authentication"
+  >
+    Learn how voice-based authentication works
+  </Card>
+  <Card
+    title="Setup Guide"
+    icon="gear"
+    href="/guides/setup"
+  >
+    Configure your development environment
+  </Card>
+</CardGroup>
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Voice Registration" icon="user-plus">
+    Register users by uploading audio samples. The system generates unique voice embeddings stored securely in PostgreSQL.
+  </Card>
+  <Card title="Voice Authentication" icon="shield-check">
+    Authenticate users by comparing new voice samples against stored embeddings using cosine similarity matching.
+  </Card>
+  <Card title="Resemblyzer Integration" icon="waveform">
+    Built on the Resemblyzer library for robust voice embedding generation and speaker verification.
+  </Card>
+  <Card title="RESTful API" icon="network-wired">
+    Clean, FastAPI-based REST endpoints with CORS support for easy integration.
+  </Card>
+</CardGroup>
+
+## How It Works
+
+<Steps>
+  <Step title="User Registration">
+    Users upload a voice sample (WAV, MP3, or MPEG format) along with their name. The system preprocesses the audio and generates a unique voice embedding using the Resemblyzer encoder.
+  </Step>
+  <Step title="Embedding Storage">
+    The voice embedding is stored as binary data in PostgreSQL, associated with the user's account. This serves as their biometric signature.
+  </Step>
+  <Step title="Voice Login">
+    During authentication, users provide their name and a new voice sample. The system generates an embedding from the new sample and compares it to the stored embedding.
+  </Step>
+  <Step title="Similarity Verification">
+    If the cosine similarity between embeddings exceeds the threshold (0.80), access is granted. Otherwise, authentication fails.
+  </Step>
+</Steps>
+
+## Technology Stack
+
+- **FastAPI** - Modern Python web framework for building APIs
+- **Resemblyzer** - Voice embedding generation and speaker verification
+- **PostgreSQL** - Database for user data and voice embeddings
+- **SQLAlchemy** - ORM for database interactions
+- **Alembic** - Database migration management
+
+## Use Cases
+
+<AccordionGroup>
+  <Accordion title="Secure Authentication">
+    Replace password-based authentication with voice biometrics for enhanced security and user experience.
+  </Accordion>
+  <Accordion title="Voice-Activated Systems">
+    Build voice-controlled applications that verify user identity before executing commands.
+  </Accordion>
+  <Accordion title="Multi-Factor Authentication">
+    Add voice verification as an additional authentication factor alongside traditional methods.
+  </Accordion>
+  <Accordion title="Speaker Verification">
+    Verify speaker identity in call centers, voice assistants, or access control systems.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Get Started"
+    icon="play"
+    href="/quickstart"
+  >
+    Follow the quickstart guide to run the API locally
+  </Card>
+  <Card
+    title="Core Concepts"
+    icon="book"
+    href="/concepts/voice-authentication"
+  >
+    Understand voice authentication fundamentals
+  </Card>
+</CardGroup>

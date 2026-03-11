@@ -1,80 +1,308 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: 'Quickstart'
+description: 'Get the Resemblyzer App API running locally in minutes'
 ---
 
-## Get started in three steps
+## Prerequisites
 
-Get your documentation site running locally and make your first customization.
+Before you begin, ensure you have the following installed:
 
-### Step 1: Set up your local environment
+- **Python 3.12 or higher** - Check with `python --version`
+- **PostgreSQL** - A running PostgreSQL database server
+- **uv** (recommended) or **pip** - Python package manager
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+## Installation
+
+<Steps>
+  <Step title="Clone the repository">
+    Clone the Resemblyzer App repository to your local machine:
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
+    ```bash
+    git clone <your-repository-url>
+    cd resemblyzer-app
+    ```
+  </Step>
+
+  <Step title="Install dependencies">
+    The project uses `pyproject.toml` for dependency management. Install all required packages:
     
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
+    <CodeGroup>
+    ```bash uv (recommended)
+    uv pip install -e .
+    ```
     
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    ```bash pip
+    pip install -e .
+    ```
+    </CodeGroup>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+    <Info>
+    Key dependencies include:
+    - **FastAPI** - Modern web framework for building APIs
+    - **Resemblyzer** - Voice embedding library for speaker verification
+    - **SQLAlchemy** - Database ORM
+    - **Alembic** - Database migration tool
+    - **psycopg** - PostgreSQL adapter
+    </Info>
+  </Step>
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+  <Step title="Configure environment variables">
+    Create a `.env` file in the project root with your database connection:
+    
+    ```bash .env
+    DATABASE_URL=postgresql://username:password@localhost:5432/resemblyzer_db
+    ```
 
-### Step 3: Go live
+    <Warning>
+    Replace `username`, `password`, and `resemblyzer_db` with your actual PostgreSQL credentials and database name.
+    </Warning>
+  </Step>
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+  <Step title="Create the database">
+    Create a new PostgreSQL database for the application:
+    
+    ```bash
+    psql -U postgres -c "CREATE DATABASE resemblyzer_db;"
+    ```
+    
+    Or use your preferred PostgreSQL client to create the database.
+  </Step>
 
-## Next steps
+  <Step title="Run database migrations">
+    Apply the database schema using Alembic migrations:
+    
+    ```bash
+    alembic upgrade head
+    ```
+    
+    This will create the `users` table with columns for:
+    - `id` - Primary key
+    - `name` - User's name
+    - `voice_emmbedding` - Binary storage for voice embeddings
+  </Step>
+</Steps>
 
-Now that you have your docs running, explore these key features:
+## Running the Server
+
+Start the FastAPI development server using uvicorn:
+
+```bash
+fastapi dev src/main.py
+```
+
+The API will be available at:
+- **API**: http://localhost:8000
+- **Interactive docs**: http://localhost:8000/docs
+- **Alternative docs**: http://localhost:8000/redoc
+
+<Tip>
+The server runs with auto-reload enabled, so changes to your code will automatically restart the server.
+</Tip>
+
+## Testing the API
+
+Now that your server is running, let's test the voice authentication endpoints.
+
+<Steps>
+  <Step title="Register a new user">
+    Register a user with their voice sample. You'll need an audio file (WAV, MP3, or MPEG format):
+    
+    ```bash
+    curl -X POST "http://localhost:8000/users/register" \
+      -F "name=John Doe" \
+      -F "audio=@/path/to/voice_sample.wav"
+    ```
+    
+    **Response:**
+    ```json
+    {
+      "message": "User created successfully",
+      "user_id": 1,
+      "name": "John Doe",
+      "audio": "voice_sample.wav",
+      "audio_type": "audio/wav",
+      "embed": [0.123, 0.456, ...]
+    }
+    ```
+
+    <Info>
+    The API processes the audio file using Resemblyzer to create a unique voice embedding that's stored in the database.
+    </Info>
+  </Step>
+
+  <Step title="Authenticate with voice">
+    Verify a user's identity by comparing their voice against the stored embedding:
+    
+    ```bash
+    curl -X POST "http://localhost:8000/users/login" \
+      -F "name=John Doe" \
+      -F "audio=@/path/to/login_voice.wav"
+    ```
+    
+    **Success response (similarity ≥ 0.80):**
+    ```json
+    {
+      "status": "success",
+      "message": "Bienvenido John Doe",
+      "similarity": 0.8542
+    }
+    ```
+    
+    **Failed authentication (similarity < 0.80):**
+    ```json
+    {
+      "detail": "Acceso denegado. Similitud: 0.7234"
+    }
+    ```
+
+    <Note>
+    The authentication threshold is set at **0.80 similarity**. Adjust this in `src/routers/users.py:69` if needed.
+    </Note>
+  </Step>
+
+  <Step title="List all users">
+    Retrieve all registered users:
+    
+    ```bash
+    curl "http://localhost:8000/users/users"
+    ```
+    
+    **Response:**
+    ```json
+    [
+      {
+        "id": 1,
+        "name": "John Doe"
+      },
+      {
+        "id": 2,
+        "name": "Jane Smith"
+      }
+    ]
+    ```
+  </Step>
+</Steps>
+
+## Understanding the Code
+
+Here's how the key components work together:
+
+### FastAPI Application (`src/main.py`)
+
+```python src/main.py
+from fastapi import FastAPI
+from .routers import users
+from fastapi.middleware.cors import CORSMiddleware
+
+app = FastAPI()
+
+# CORS configuration for local development
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://localhost:8080"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Include user authentication routes
+app.include_router(users.router)
+```
+
+### Database Configuration (`src/database.py`)
+
+```python src/database.py
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+import os
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+```
+
+### Voice Embedding Model (`src/models.py`)
+
+```python src/models.py
+from sqlalchemy import Column, Integer, String, LargeBinary
+
+class User(Base):
+    __tablename__ = "users"
+    
+    id = Column(Integer, primary_key=True)
+    name = Column(String)
+    voice_emmbedding = Column(LargeBinary)  # Stores numpy array as bytes
+```
+
+## Next Steps
 
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card
+    title="API Reference"
+    icon="code"
+    href="/api/overview"
+  >
+    Explore detailed endpoint documentation
+  </Card>
+  
+  <Card
+    title="Authentication Guide"
+    icon="shield-halved"
+    href="/concepts/voice-authentication"
+  >
+    Learn how voice authentication works
+  </Card>
+  
+  <Card
+    title="Deploy to Production"
+    icon="rocket"
+    href="/guides/deployment"
+  >
+    Deploy your API to production environments
+  </Card>
+  
+  <Card
+    title="Database Setup"
+    icon="database"
+    href="/guides/database"
+  >
+    Configure your database
+  </Card>
 </CardGroup>
 
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+## Troubleshooting
+
+### Database Connection Issues
+
+If you encounter database connection errors:
+
+1. Verify PostgreSQL is running: `pg_isready`
+2. Check your `DATABASE_URL` in `.env`
+3. Ensure the database exists: `psql -l`
+
+### Audio Format Errors
+
+The API accepts these audio formats:
+- `audio/wav`
+- `audio/mp3`
+- `audio/mpeg`
+
+If you get "Formato de audio invalido", check your file's MIME type.
+
+### Import Errors
+
+If you see module import errors, ensure you installed the package in editable mode:
+
+```bash
+pip install -e .
+```
+
+This makes the `src` package importable.

@@ -1,0 +1,580 @@
+---
+title: "Deployment Guide"
+description: "Deploy the Resemblyzer App voice authentication API to production with best practices"
+---
+
+## Production Considerations
+
+Before deploying to production, ensure you've addressed these critical areas:
+
+<CardGroup cols={2}>
+  <Card title="Database" icon="database">
+    Connection pooling, SSL, backups
+  </Card>
+  <Card title="Security" icon="shield">
+    HTTPS, secrets management, CORS
+  </Card>
+  <Card title="Performance" icon="gauge">
+    Worker processes, file cleanup
+  </Card>
+  <Card title="Monitoring" icon="chart-line">
+    Logging, error tracking, metrics
+  </Card>
+</CardGroup>
+
+## Environment Variables
+
+### Required Configuration
+
+Set these environment variables in your production environment:
+
+```bash
+# Database connection
+DATABASE_URL=postgresql://user:password@host:5432/dbname?sslmode=require
+
+# Application settings
+ENVIRONMENT=production
+DEBUG=false
+
+# Security (if implemented)
+SECRET_KEY=your-secret-key-here
+ALLOWED_ORIGINS=https://yourdomain.com,https://app.yourdomain.com
+```
+
+<Warning>
+Never use development database credentials in production. Always use strong, unique passwords and enable SSL.
+</Warning>
+
+### Database URL Configuration
+
+For production, your `DATABASE_URL` should include security options:
+
+<CodeGroup>
+```env Managed PostgreSQL (Heroku, Render, etc.)
+DATABASE_URL=postgresql://user:pass@host.provider.com:5432/dbname?sslmode=require
+```
+
+```env Self-hosted with SSL
+DATABASE_URL=postgresql://user:pass@host:5432/dbname?sslmode=require&sslrootcert=/path/to/ca-cert.pem
+```
+
+```env Connection Pooling (PgBouncer)
+DATABASE_URL=postgresql://user:pass@pooler.host.com:6432/dbname?sslmode=require
+```
+</CodeGroup>
+
+## Database Connection Pooling
+
+For production workloads, configure SQLAlchemy connection pooling:
+
+```python src/database.py
+import os
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from dotenv import load_dotenv
+
+load_dotenv()
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+# Production configuration with connection pooling
+engine = create_engine(
+    DATABASE_URL,
+    pool_size=10,              # Maximum number of connections to maintain
+    max_overflow=20,           # Allow 20 additional connections during load
+    pool_pre_ping=True,        # Verify connections before using
+    pool_recycle=3600,         # Recycle connections after 1 hour
+    echo=False,                # Disable SQL logging in production
+)
+
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+```
+
+<Info>
+Adjust `pool_size` and `max_overflow` based on your expected concurrent users. Each worker process will maintain its own connection pool.
+</Info>
+
+## Running with Uvicorn
+
+### Development vs Production
+
+<CodeGroup>
+```bash Development
+# Single worker with auto-reload
+uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+```bash Production
+# Multiple workers for concurrent requests
+uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 4
+```
+</CodeGroup>
+
+### Worker Configuration
+
+Calculate the number of workers based on CPU cores:
+
+```bash
+# Formula: (2 x CPU cores) + 1
+# For 2 cores: 5 workers
+uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 5
+```
+
+<Warning>
+Each worker loads the Resemblyzer VoiceEncoder model into memory (~100MB). Monitor memory usage when scaling workers.
+</Warning>
+
+### Using Gunicorn with Uvicorn Workers
+
+For production, use Gunicorn with Uvicorn workers for better process management:
+
+```bash
+# Install gunicorn
+pip install gunicorn
+
+# Run with uvicorn workers
+gunicorn src.main:app \
+  --workers 4 \
+  --worker-class uvicorn.workers.UvicornWorker \
+  --bind 0.0.0.0:8000 \
+  --timeout 120 \
+  --access-logfile - \
+  --error-logfile -
+```
+
+<Accordion title="Gunicorn Configuration File">
+Create `gunicorn.conf.py` in your project root:
+
+```python gunicorn.conf.py
+import multiprocessing
+import os
+
+# Server socket
+bind = "0.0.0.0:8000"
+
+# Worker processes
+workers = int(os.getenv("WEB_CONCURRENCY", multiprocessing.cpu_count() * 2 + 1))
+worker_class = "uvicorn.workers.UvicornWorker"
+
+# Timeout for workers
+timeout = 120
+graceful_timeout = 30
+
+# Logging
+accesslog = "-"
+errorlog = "-"
+loglevel = "info"
+
+# Process naming
+proc_name = "resemblyzer-app"
+```
+
+Run with:
+```bash
+gunicorn -c gunicorn.conf.py src.main:app
+```
+</Accordion>
+
+## CORS Configuration
+
+Update CORS settings for your production domain:
+
+```python src/main.py
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+import os
+
+app = FastAPI()
+
+# Production CORS configuration
+origins = [
+    "https://yourdomain.com",
+    "https://app.yourdomain.com",
+]
+
+# Allow environment variable override
+if os.getenv("ALLOWED_ORIGINS"):
+    origins = os.getenv("ALLOWED_ORIGINS").split(",")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+```
+
+<Warning>
+Never use `allow_origins=["*"]` in production. Always specify exact domains.
+</Warning>
+
+## Audio File Handling
+
+### Temporary File Cleanup
+
+The application uses temporary files for audio processing. Current implementation:
+
+```python src/routers/users.py
+import tempfile
+import shutil
+from pathlib import Path
+
+@router.post("/register")
+async def create_users(
+    name: str = Form(...),
+    audio: UploadFile = File(...),
+    db: Session = Depends(database.get_db),
+):
+    # Save uploaded file to temporary location
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+        shutil.copyfileobj(audio.file, tmp)
+        tmp_path = Path(tmp.name)
+    
+    try:
+        # Process audio
+        wav_audio = preprocess_wav(tmp_path)
+        embed = encoder.embed_utterance(wav_audio)
+        
+        # Store in database
+        user = models.User(name=name, voice_emmbedding=embed.tobytes())
+        db.add(user)
+        db.commit()
+    finally:
+        # Always cleanup temporary file
+        if tmp_path.exists(): 
+            tmp_path.unlink()
+```
+
+<Info>
+Temporary files are automatically cleaned up in the `finally` block, even if an error occurs during processing.
+</Info>
+
+### File Upload Limits
+
+Add file size limits to prevent abuse:
+
+```python src/main.py
+from fastapi import FastAPI
+
+app = FastAPI()
+
+# Limit request body size to 10MB
+app.add_middleware(
+    lambda app: app,
+    max_upload_size=10 * 1024 * 1024  # 10MB
+)
+```
+
+### Supported Audio Formats
+
+The application validates audio formats in `src/routers/users.py:25`:
+
+```python
+if audio.content_type not in ["audio/mpeg", "audio/wav", "audio/mp3"]:
+    raise HTTPException(status_code=400, detail="Invalid audio format")
+```
+
+<Tip>
+For better security, also validate file extensions and use a library like `python-magic` to verify actual file types.
+</Tip>
+
+## Security Considerations
+
+### HTTPS Configuration
+
+<Steps>
+  <Step title="Use a Reverse Proxy">
+    Deploy behind Nginx or Caddy to handle SSL termination:
+    
+    ```nginx nginx.conf
+    server {
+        listen 443 ssl http2;
+        server_name api.yourdomain.com;
+        
+        ssl_certificate /etc/letsencrypt/live/api.yourdomain.com/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/api.yourdomain.com/privkey.pem;
+        
+        location / {
+            proxy_pass http://127.0.0.1:8000;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+    }
+    ```
+  </Step>
+  
+  <Step title="Configure Trust Proxy Headers">
+    Tell FastAPI to trust proxy headers:
+    
+    ```python src/main.py
+    from fastapi import FastAPI
+    
+    app = FastAPI(
+        docs_url="/docs" if os.getenv("ENVIRONMENT") == "development" else None,
+        redoc_url="/redoc" if os.getenv("ENVIRONMENT") == "development" else None,
+    )
+    ```
+  </Step>
+</Steps>
+
+### Voice Embedding Storage
+
+Voice embeddings are sensitive biometric data:
+
+<Warning>
+**Important Security Measures:**
+- Store embeddings encrypted at rest (use database-level encryption)
+- Use secure database connections (SSL/TLS)
+- Implement access controls and audit logging
+- Consider GDPR/privacy regulations for biometric data
+- Provide user data deletion capabilities
+</Warning>
+
+### Authentication Threshold
+
+The similarity threshold for voice authentication is defined in `src/routers/users.py:69`:
+
+```python
+UMBRAL = 0.80  # 80% similarity required
+if similarity < UMBRAL:
+    raise HTTPException(status_code=401, detail=f"Access denied. Similarity: {similarity:.4f}")
+```
+
+<Tip>
+Adjust the threshold based on your security requirements:
+- **Higher threshold (0.85-0.90)**: More secure, may reject valid users
+- **Lower threshold (0.70-0.75)**: More permissive, may accept imposters
+
+Test with real users to find the optimal balance.
+</Tip>
+
+## Running Migrations in Production
+
+### Pre-deployment Migration
+
+Always run migrations before deploying new code:
+
+```bash
+# In your deployment script
+alembic upgrade head
+```
+
+### Zero-downtime Migrations
+
+For critical production systems:
+
+<Steps>
+  <Step title="Deploy Backward-Compatible Schema Changes">
+    Add new columns as nullable first:
+    ```python
+    op.add_column('users', sa.Column('new_field', sa.String(), nullable=True))
+    ```
+  </Step>
+  
+  <Step title="Deploy Application Code">
+    Update application to use new fields while maintaining compatibility.
+  </Step>
+  
+  <Step title="Backfill Data">
+    Populate new fields for existing rows:
+    ```python
+    op.execute("UPDATE users SET new_field = 'default' WHERE new_field IS NULL")
+    ```
+  </Step>
+  
+  <Step title="Make Non-nullable">
+    Once data is backfilled, enforce constraints:
+    ```python
+    op.alter_column('users', 'new_field', nullable=False)
+    ```
+  </Step>
+</Steps>
+
+## Deployment Platforms
+
+### Docker Deployment
+
+<Accordion title="Dockerfile Example">
+```dockerfile Dockerfile
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install system dependencies for audio processing
+RUN apt-get update && apt-get install -y \
+    libsndfile1 \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY pyproject.toml .
+RUN pip install --no-cache-dir -e .
+
+# Copy application code
+COPY . .
+
+# Run migrations and start server
+CMD alembic upgrade head && \
+    gunicorn src.main:app \
+    --workers 4 \
+    --worker-class uvicorn.workers.UvicornWorker \
+    --bind 0.0.0.0:8000
+```
+
+```yaml docker-compose.yml
+version: '3.8'
+
+services:
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:password@db:5432/resemblyzer_db
+    depends_on:
+      - db
+  
+  db:
+    image: postgres:15
+    environment:
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=resemblyzer_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
+```
+</Accordion>
+
+### Platform-Specific Guides
+
+<AccordionGroup>
+  <Accordion title="Deploy to Render">
+    1. Create a new Web Service
+    2. Connect your Git repository
+    3. Set build command:
+       ```bash
+       pip install -e .
+       ```
+    4. Set start command:
+       ```bash
+       alembic upgrade head && uvicorn src.main:app --host 0.0.0.0 --port $PORT --workers 4
+       ```
+    5. Add PostgreSQL database from the dashboard
+    6. Set `DATABASE_URL` environment variable automatically connected
+  </Accordion>
+  
+  <Accordion title="Deploy to Fly.io">
+    1. Install flyctl: `brew install flyctl`
+    2. Login: `fly auth login`
+    3. Launch app: `fly launch`
+    4. Create PostgreSQL database: `fly postgres create`
+    5. Attach database: `fly postgres attach <db-name>`
+    6. Deploy: `fly deploy`
+  </Accordion>
+  
+  <Accordion title="Deploy to Railway">
+    1. Create a new project from GitHub
+    2. Add PostgreSQL database service
+    3. Set environment variables automatically
+    4. Railway detects Python and installs dependencies
+    5. Set start command in `railway.json`:
+       ```json
+       {
+         "build": {
+           "builder": "nixpacks"
+         },
+         "deploy": {
+           "startCommand": "alembic upgrade head && uvicorn src.main:app --host 0.0.0.0 --port $PORT --workers 4"
+         }
+       }
+       ```
+  </Accordion>
+</AccordionGroup>
+
+## Monitoring and Logging
+
+### Application Logging
+
+Add structured logging:
+
+```python src/main.py
+import logging
+import sys
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+
+logger = logging.getLogger("resemblyzer-app")
+
+@app.on_event("startup")
+async def startup_event():
+    logger.info("Application starting up")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    logger.info("Application shutting down")
+```
+
+### Health Check Endpoint
+
+Add a health check for monitoring:
+
+```python src/main.py
+@app.get("/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "version": "0.1.0"
+    }
+```
+
+### Error Tracking
+
+Integrate with Sentry for error tracking:
+
+```python
+import sentry_sdk
+
+if os.getenv("SENTRY_DSN"):
+    sentry_sdk.init(
+        dsn=os.getenv("SENTRY_DSN"),
+        environment=os.getenv("ENVIRONMENT", "production"),
+    )
+```
+
+## Performance Optimization
+
+<CardGroup cols={2}>
+  <Card title="Model Loading" icon="brain">
+    The VoiceEncoder loads once per worker at startup (src/routers/users.py:11)
+  </Card>
+  <Card title="Database Queries" icon="database">
+    Use indexes on frequently queried columns (e.g., username)
+  </Card>
+  <Card title="Connection Pooling" icon="plug">
+    Configure pool_size based on worker count
+  </Card>
+  <Card title="Audio Processing" icon="waveform">
+    Consider async processing for large batches
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="API Reference" icon="code" href="/api/users/register">
+    Explore the complete API documentation
+  </Card>
+  <Card title="Database Guide" icon="database" href="/guides/database">
+    Learn more about database configuration and migrations
+  </Card>
+</CardGroup>

@@ -1,0 +1,148 @@
+---
+title: "Login User"
+api: "POST /users/login"
+description: "Authenticate a user using voice biometric verification"
+---
+
+## Description
+
+This endpoint authenticates a user by comparing their voice sample against the stored voice embedding. The system calculates a similarity score and grants access if it exceeds the threshold of 0.80.
+
+## Authentication Method
+
+The endpoint uses voice biometric authentication with the following process:
+1. Accepts an audio file from the user
+2. Generates a voice embedding from the audio
+3. Compares it against the stored voice embedding using cosine similarity
+4. Grants access if similarity score >= **0.80**
+
+## Request Parameters
+
+<ParamField body="name" type="string" required>
+  The name of the user attempting to log in. Must match an existing registered user.
+</ParamField>
+
+<ParamField body="audio" type="file" required>
+  Audio file containing the user's voice for authentication. The voice will be compared against the registered voice embedding.
+  
+  **Accepted formats:**
+  - `audio/mpeg`
+  - `audio/wav`
+  - `audio/mp3`
+</ParamField>
+
+<Note>
+  The similarity threshold is set to **0.80**. A similarity score below this value will result in authentication failure.
+</Note>
+
+## Request Example
+
+<CodeGroup>
+```bash cURL
+curl -X POST "http://localhost:8000/users/login" \
+  -H "Content-Type: multipart/form-data" \
+  -F "name=John Doe" \
+  -F "audio=@/path/to/voice_verification.wav"
+```
+
+```python Python
+import requests
+
+url = "http://localhost:8000/users/login"
+
+files = {
+    "audio": open("voice_verification.wav", "rb")
+}
+data = {
+    "name": "John Doe"
+}
+
+response = requests.post(url, files=files, data=data)
+print(response.json())
+```
+
+```javascript JavaScript
+const formData = new FormData();
+formData.append('name', 'John Doe');
+formData.append('audio', audioFile);
+
+fetch('http://localhost:8000/users/login', {
+  method: 'POST',
+  body: formData
+})
+  .then(response => response.json())
+  .then(data => console.log(data));
+```
+</CodeGroup>
+
+## Response
+
+<ResponseField name="status" type="string">
+  Authentication status.
+  
+  **Value:** `"success"`
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Welcome message for the authenticated user.
+  
+  **Format:** `"Bienvenido {user.name}"`
+</ResponseField>
+
+<ResponseField name="similarity" type="float">
+  The calculated similarity score between the provided voice sample and the stored voice embedding. Value ranges from 0.0 to 1.0.
+</ResponseField>
+
+## Response Examples
+
+<Expandable title="Successful Authentication (200)">
+```json
+{
+  "status": "success",
+  "message": "Bienvenido John Doe",
+  "similarity": 0.9234
+}
+```
+</Expandable>
+
+<Expandable title="User Not Found (404)">
+```json
+{
+  "detail": "Usuario no encontrado"
+}
+```
+</Expandable>
+
+<Expandable title="Authentication Failed (401)">
+```json
+{
+  "detail": "Acceso denegado. Similitud: 0.7234"
+}
+```
+
+This error occurs when the similarity score is below the threshold of 0.80. The actual similarity score is included in the error message.
+</Expandable>
+
+## Error Codes
+
+| Status Code | Description |
+|-------------|-------------|
+| 200 | Authentication successful |
+| 401 | Authentication failed - similarity score below 0.80 threshold |
+| 404 | User not found - no user exists with the provided name |
+| 422 | Validation error - missing required fields |
+
+## Similarity Threshold
+
+The authentication system uses a **similarity threshold of 0.80**. This means:
+
+- **Similarity >= 0.80**: Authentication succeeds
+- **Similarity < 0.80**: Authentication fails with 401 error
+
+<Warning>
+  If authentication fails, the error response includes the actual similarity score for debugging purposes. In production, you may want to remove this information for security reasons.
+</Warning>
+
+<Note>
+  The similarity score is calculated using the inner product (cosine similarity) between the stored voice embedding and the login voice embedding.
+</Note>
